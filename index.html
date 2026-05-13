@@ -707,6 +707,10 @@ footer { margin-top:100px; padding:32px 0; border-top:1px solid rgba(255,255,255
         <div class="ishell"><input type="text" id="cfgPath" placeholder="مثال: /Masir" spellcheck="false"></div>
       </div>
       <div class="field ff">
+        <label>🖥️ Server Address <span style="color:var(--e);font-size:9px;padding:1px 9px;border:1px solid rgba(255,140,0,.2);border-radius:5px;background:rgba(255,140,0,.05);">Backend · x-host header</span></label>
+        <div class="ishell"><input type="text" id="cfgServerAddr" placeholder="مثال: https://sub.domain.com:443 یا http://1.2.3.4:444" spellcheck="false" autocomplete="off" dir="ltr"></div>
+      </div>
+      <div class="field ff">
         <label>🌐 Host / SNI Domain</label>
         <div class="ishell"><input type="text" id="cfgHost" placeholder="مثال: sub.domain.com یا CDN شما" spellcheck="false"></div>
       </div>
@@ -1051,20 +1055,26 @@ const TRANSPORTS=[
   {id:'xhttp', label:'XHTTP', emoji:'⚡', port:443, type:'xhttp', desc:'XHTTP · همه کلاینت‌ها'},
 ];
 
-function buildURI(uid,name,path,host,domain,ip,emoji,idx,t){
+function buildURI(uid,name,path,host,domain,ip,emoji,idx,t,serverAddr){
   const tag=`${emoji} ${name} #${String(idx).padStart(3,'0')}`;
-  return `vless://${uid}@${ip}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&alpn=h2%2Chttp%2F1.1&allowInsecure=1&type=xhttp&host=${encodeURIComponent(host)}&path=${encodeURIComponent('/'+path)}&mode=auto&extra=${encodeURIComponent('{"xPaddingBytes":"100-1000","noGRPCHeader":true}')}#${encodeURIComponent(tag)}`;
+  // xhttp extra: same as IR_NETLIFY Custom Server — x-host points to backend server
+  const extraObj={xPaddingBytes:'1-1',scMaxEachPostBytes:'1000000'};
+  if(serverAddr) extraObj.headers={'x-host':serverAddr};
+  const encodedExtra=encodeURIComponent(JSON.stringify(extraObj));
+  const encodedPath=encodeURIComponent(path.startsWith('/')?path:'/'+path);
+  return `vless://${uid}@${ip}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&alpn=h2%2Chttp%2F1.1&insecure=1&allowInsecure=1&type=xhttp&host=${encodeURIComponent(host)}&path=${encodedPath}&mode=auto&extra=${encodedExtra}#${encodeURIComponent(tag)}`;
 }
 
-function makeConfigs(uid,name,path,host,sni,ip,em,label,startIdx,isNormalMode){
+function makeConfigs(uid,name,path,host,sni,ip,em,label,startIdx,isNormalMode,serverAddr){
   const idx=startIdx;
   return [{
     domain:sni, ip, emoji:em, label,
     transport:'xhttp', transportLabel:'XHTTP', transportBadge:'xhttp',
     transportDesc:'XHTTP', transportType:'xhttp', port:443,
     isNormal:isNormalMode,
+    serverAddr:serverAddr||'',
     name:`${em} ${name} #${String(idx).padStart(3,'0')}`,
-    config:buildURI(uid,name,path,host,sni,ip,em,idx,TRANSPORTS[0])
+    config:buildURI(uid,name,path,host,sni,ip,em,idx,TRANSPORTS[0],serverAddr)
   }];
 }
 
@@ -1111,7 +1121,7 @@ function filterConfigs(q){
 
 /* ══ DOWNLOAD HELPERS ══ */
 let generatedConfigs=[];
-let _lastUid='',_lastName='',_lastPath='',_lastHost='';
+let _lastUid='',_lastName='',_lastPath='',_lastHost='',_lastServerAddr='';
 
 function triggerDL(content,filename,mime){
   const blob=content instanceof Blob?content:new Blob([content],{type:mime+';charset=utf-8'});
@@ -1159,7 +1169,7 @@ function renderDash(configs){
 }
 
 /* ══ RENDER RESULTS ══ */
-function renderResults(configs,uid,name,path,host){
+function renderResults(configs,uid,name,path,host,serverAddr){
   const container=document.getElementById('results');
 
   const tColors={
@@ -1190,6 +1200,7 @@ function renderResults(configs,uid,name,path,host){
             ${modeBadge}
             <span style="font-size:8px;padding:1px 7px;border-radius:4px;border:1px solid ${tc}55;color:${tc};background:${tc}11;" title="${c.transportDesc||''}">${c.transportLabel}</span>
             ${portBadge}
+            ${c.serverAddr?`<span style="font-size:8px;padding:1px 7px;border-radius:4px;border:1px solid rgba(255,140,0,.3);color:#ff8c00;background:rgba(255,140,0,.08);" title="Backend x-host">🖥️ ${c.serverAddr.replace(/^https?:\/\//,'').split(':')[0].substring(0,22)}</span>`:''}
             <span style="opacity:.45;font-size:9px;">SNI: ${c.domain}${!c.isNormal?' · IP: '+c.ip:''}</span>
           </div>
         </div>
@@ -1289,7 +1300,7 @@ function renderResults(configs,uid,name,path,host){
       <div class="gcard" style="margin-top:18px;opacity:1;animation:none;">
         <div class="slbl" style="margin-bottom:16px;"><div class="slbl-ico">🔢</div><span class="slbl-txt">Summary</span><div class="slbl-line"></div></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;text-align:center;">
-          ${[['کل کانفیگ',configs.length,'var(--a)'],['SNI دامنه',uniqueDomains.length,'var(--b)'],['آدرس IP',uniqueIPs.length,'var(--c)'],['فاوریت‌ها',favs.size,'var(--e)'],['فرمت خروجی',1,'var(--d)'],['پروتکل','VLESS','var(--a)']].map(([l,v,c])=>`<div style="background:var(--glass2);border:1px solid rgba(255,255,255,0.042);border-radius:var(--rs);padding:18px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:1px;background:${c};opacity:.4;"></div><div style="font-family:'Oxanium',sans-serif;font-size:24px;font-weight:800;color:${c};text-shadow:0 0 20px ${c};">${v}</div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--textm);margin-top:6px;">${l}</div></div>`).join('')}
+          ${[['کل کانفیگ',configs.length,'var(--a)'],['SNI دامنه',uniqueDomains.length,'var(--b)'],['آدرس IP',uniqueIPs.length,'var(--c)'],['فاوریت‌ها',favs.size,'var(--e)'],['Custom Server',serverAddr?'✅ فعال':'—','var(--e)'],['پروتکل','VLESS','var(--a)']].map(([l,v,c])=>`<div style="background:var(--glass2);border:1px solid rgba(255,255,255,0.042);border-radius:var(--rs);padding:18px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:1px;background:${c};opacity:.4;"></div><div style="font-family:'Oxanium',sans-serif;font-size:24px;font-weight:800;color:${c};text-shadow:0 0 20px ${c};">${v}</div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--textm);margin-top:6px;">${l}</div></div>`).join('')}
         </div>
       </div>
     </div>
@@ -1335,6 +1346,7 @@ document.getElementById('generateBtn').addEventListener('click',async function()
   const uid=document.getElementById('uid').value.trim();
   const name=document.getElementById('cfgName').value.trim();
   const path=document.getElementById('cfgPath').value.trim();
+  const serverAddr=document.getElementById('cfgServerAddr').value.trim();
   const host=document.getElementById('cfgHost').value.trim();
 
   const rawSNIs=document.getElementById('sniList').value.trim().split('\n').map(d=>d.trim().replace(/^https?:\/\//,'')).filter(Boolean);
@@ -1367,7 +1379,7 @@ document.getElementById('generateBtn').addEventListener('click',async function()
   ];
   for(const s of steps){pb.style.width=s.p+'%';gt.textContent=s.msg;tlog(s.msg.replace(/^[\p{Emoji}\s]+/u,''),s.c);await new Promise(r=>setTimeout(r,140));}
 
-  _lastUid=uid;_lastName=name;_lastPath=path;_lastHost=host;
+  _lastUid=uid;_lastName=name;_lastPath=path;_lastHost=host;_lastServerAddr=serverAddr||'';
   let idx=1;generatedConfigs=[];
 
   const lookupEmoji=d=>{const f=DOMAINS.find(x=>x.domain===d);return f?f.emoji:'🌐';};
@@ -1376,19 +1388,19 @@ document.getElementById('generateBtn').addEventListener('click',async function()
   if(currentMode==='shecan'){
     for(const sni of rawSNIs)for(const ip of rawIPs){
       const em=lookupEmoji(sni), lbl=lookupLabel(sni);
-      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,ip,em,lbl,idx,false));
+      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,ip,em,lbl,idx,false,serverAddr));
       idx+=TRANSPORTS.length;
     }
     // کانفیگ نرمال (آدرس=SNI) به عنوان bonus
     for(const sni of rawSNIs){
       const em=lookupEmoji(sni), lbl=lookupLabel(sni);
-      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,sni,em,lbl,idx,true));
+      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,sni,em,lbl,idx,true,serverAddr));
       idx+=TRANSPORTS.length;
     }
   } else {
     for(const sni of rawSNIs){
       const em=lookupEmoji(sni), lbl=lookupLabel(sni);
-      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,sni,em,lbl,idx,true));
+      generatedConfigs.push(...makeConfigs(uid,name,path,host,sni,sni,em,lbl,idx,true,serverAddr));
       idx+=TRANSPORTS.length;
     }
   }
@@ -1404,12 +1416,12 @@ document.getElementById('generateBtn').addEventListener('click',async function()
   snd('success');
   showNotif(`🚀 ${generatedConfigs.length} کانفیگ آماده شد!`,'success',5000);
   bnotif('AmyraxVPN NEXUS V7 ✅',`${generatedConfigs.length} کانفیگ آماده · ZIP بگیرید!`);
-  renderResults(generatedConfigs,uid,name,path,host);
+  renderResults(generatedConfigs,uid,name,path,host,serverAddr);
   setTimeout(()=>document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'}),320);
 });
 
 /* ══ KEYBOARD SHORTCUTS ══ */
-['uid','cfgName','cfgPath','cfgHost'].forEach(id=>{
+['uid','cfgName','cfgPath','cfgServerAddr','cfgHost'].forEach(id=>{
   document.getElementById(id)?.addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('generateBtn').click();});
 });
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')document.getElementById('generateBtn').click();});
